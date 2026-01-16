@@ -1,64 +1,50 @@
-import dotenv from "dotenv";
 import express from "express";
-
+import dotenv from "dotenv";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { generateEmbedding } from "../services/embedding.service.js";
-import { getMemories } from "../memoryStore.js";
-import { cosineSimilarity } from "../similarity.js";
+import { searchVector } from "../services/vector.service.js";
 
 dotenv.config();
 
 const router = express.Router();
-console.log("KEY CHECK:", process.env.OPENAI_API_KEY?.slice(0, 10));
-console.log("MEMORIES COUNT:", getMemories().length);
-
-// 🔁 variable name SAME
 const client = new GoogleGenerativeAI(process.env.OPENAI_API_KEY);
 
 router.post("/", async (req, res) => {
   try {
     const { message } = req.body;
-
     if (!message) {
-      return res.status(400).json({ error: "Message is required" });
+      return res.status(400).json({ error: "Message required" });
     }
 
-    // 1️⃣ embedding of user question
-    const queryEmbedding = await generateEmbedding(message);
+    // 1️⃣ Embed query
+    const qEmbedding = await generateEmbedding(message);
 
-    // 2️⃣ find relevant memories
-    const relevantMemories = getMemories()
-      .map((mem) => ({
-        text: mem.text,
-        score: cosineSimilarity(queryEmbedding, mem.embedding),
-      }))
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 3)
-      .map((m) => `- ${m.text}`)
-      .join("\n");
+    // 2️⃣ Vector search (REAL MEMORY)
+    const memories = await searchVector(qEmbedding, 3);
 
-    // 3️⃣ Gemini model
+    const memoryBlock = memories.length
+      ? memories.map((m) => `- ${m.text}`).join("\n")
+      : "No stored memory.";
+
+    // 3️⃣ Gemini
     const model = client.getGenerativeModel({
-      model: "gemini-3-flash-preview",
+      model: "gemini-2.5-flash-lite",
     });
 
-    // 4️⃣ prompt with memory injection
     const prompt = `
 You are an assistant with long-term memory.
 
 User memory:
-${relevantMemories || "No relevant memory found."}
+${memoryBlock}
 
 User question:
 ${message}
 `;
 
     const result = await model.generateContent(prompt);
-    const reply = result.response.text();
-
-    res.json({ reply });
+    res.json({ reply: result.response.text() });
   } catch (err) {
-    console.error(err);
+    console.error("CHAT ERROR:", err);
     res.status(500).json({ error: "Chat failed" });
   }
 });

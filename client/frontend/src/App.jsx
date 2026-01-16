@@ -39,7 +39,7 @@ function App() {
     <div className="app">
       <div className="chat-container">
         <header className="header">
-          SuperMemory
+          DuperMemory
           <span>AI that remembers you</span>
         </header>
 
