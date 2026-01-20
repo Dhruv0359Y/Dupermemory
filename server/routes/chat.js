@@ -1,6 +1,8 @@
 import express from "express";
 import dotenv from "dotenv";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import ollama from "ollama";
+
 import { generateEmbedding } from "../services/embedding.service.js";
 import { searchVector } from "../services/vector.service.js";
 
@@ -26,11 +28,6 @@ router.post("/", async (req, res) => {
       ? memories.map((m) => `- ${m.text}`).join("\n")
       : "No stored memory.";
 
-    // 3️⃣ Gemini
-    const model = client.getGenerativeModel({
-      model: "gemini-2.5-flash-lite",
-    });
-
     const prompt = `
 You are an assistant with long-term memory.
 
@@ -41,8 +38,29 @@ User question:
 ${message}
 `;
 
-    const result = await model.generateContent(prompt);
-    res.json({ reply: result.response.text() });
+    let reply = "";
+
+    // 3️⃣ PRIMARY: Gemini
+    try {
+      const model = client.getGenerativeModel({
+        model: "gemini-2.5-flash-lite",
+      });
+
+      const result = await model.generateContent(prompt);
+      reply = result.response.text();
+    } catch (geminiError) {
+      console.warn("Gemini failed. Switching to local LLM.");
+
+      // 4️⃣ FALLBACK: Local LLM (Qwen 2.5)
+      const response = await ollama.chat({
+        model: "qwen2.5:0.5b",
+        messages: [{ role: "user", content: prompt }],
+      });
+
+      reply = response.message.content;
+    }
+
+    res.json({ reply });
   } catch (err) {
     console.error("CHAT ERROR:", err);
     res.status(500).json({ error: "Chat failed" });

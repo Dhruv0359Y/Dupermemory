@@ -4,7 +4,7 @@ export const qdrant = new QdrantClient({
   url: "http://localhost:6333",
 });
 
-const COLLECTION = "supermemory";
+const COLLECTION = "dupermemory_collection2";
 
 export async function initVectorDB() {
   const collections = await qdrant.getCollections();
@@ -43,4 +43,5 @@ export async function searchVector(embedding, limit = 3) {
     text: r.payload.text,
     score: r.score,
   }));
+  console.log("🧠 Retrieved memories:", memories);
 }
