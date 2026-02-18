@@ -6,7 +6,7 @@ Most chatbots *appear* to remember things, but in reality they:
 - rely on short context windows
 - or hallucinate based on patterns
 
-Dupermemory solves this by using a **Vector Database (Qdrant)** to store and retrieve memories semantically.
+Dupermemory solves this by using a **Vector Database (Qdrant)** to store and retrieve memories semantically — and now with a **smart memory layer** that only remembers what actually matters.
 
 ---
 
@@ -31,78 +31,146 @@ You must build a **memory layer outside the LLM**.
 
 ## 🧠 Core Idea (In Simple Words)
 
-1. Convert user text into **embeddings** (numbers that represent meaning)
-2. Store those embeddings in a **vector database**
-3. When the user asks something:
-   - search the database for *similar past memories*
-   - inject them into the AI prompt
-4. The AI responds using **retrieved memory**
+1. User sends a message
+2. A **memory judge** decides if it contains useful long-term info
+3. If yes — score it, embed it, store it in Qdrant
+4. On every message — search Qdrant for relevant past memories
+5. Inject those memories into the AI prompt
+6. Gemini responds with full context of who the user is
 
-This creates the illusion of “remembering”, but it is actually **deterministic and reliable**.
+This is **deterministic and reliable** — not hallucination.
 
 ---
 
 ## 🏗️ System Architecture
-User Input
+
+```
+User Message
+↓
+Memory Judge (Gemini / Qwen fallback)
+↓ (only if useful)
+Memory Scorer → Importance Score (2 / 5 / 8)
 ↓
 Gemini Embedding API
 ↓
 Qdrant Vector Database (Docker)
 ↓
-Top-K Similar Memories
+Top-3 Similar Memories Retrieved
 ↓
 Prompt Injection
 ↓
-Gemini LLM Response
+Gemini LLM → Concise Response
+```
 
 ---
 
-## 🧠 Memory Design Explained
+## 🧠 Smart Memory System (New)
 
-### 🔹 Step 1: Embedding Generation
-Every message is converted into a vector using Gemini’s embedding model.
+The original version stored **every message**. The upgraded version is smarter:
 
-Example:
+### 🔹 Step 1: Memory Judge
+Before storing anything, the message is passed to an AI filter:
 
-I like cybersecurity"
-→ [0.021, -0.93, 1.12, ...]
+```
+"Hello" → NO (not stored)
+"My name is Dhruv and I love cybersecurity" → YES (stored)
+```
 
+Uses **Gemini** as primary judge. Falls back to **Qwen 2.5 (offline)** if Gemini is unavailable.
 
-These vectors capture **semantic meaning**, not exact words.
+### 🔹 Step 2: Memory Scoring
+Every stored memory gets an importance score:
 
----
+| Score | Meaning |
+|-------|---------|
+| 8 | Strong personal info (name, goals, likes) |
+| 5 | Decent length, probably useful |
+| 2 | Short, low value |
 
-### 🔹 Step 2: Vector Storage (Qdrant)
-Embeddings are stored in **Qdrant**, a production-grade vector database.
+### 🔹 Step 3: Embedding + Storage
+Useful memories are embedded using Gemini's embedding model and stored in Qdrant with:
 
-Why Qdrant?
-- Persistent storage (memory survives restart)
-- Fast similarity search
-- Used in real AI products
-- Docker-friendly
-
-Each stored memory contains:
 ```json
 {
-  "text": "I like cybersecurity",
-  "vector": [ ...embedding... ]
+  "text": "I love cybersecurity",
+  "user_id": "default_user",
+  "importance": 8,
+  "created_at": 1718000000000
 }
+```
 
-When the user asks a question:
+### 🔹 Step 4: Memory Retrieval
+When the user asks something, the question is embedded and Qdrant finds the top-3 most semantically similar memories. These are injected into the prompt so Gemini has context about the user.
 
-The question is embedded
+### 🔹 Step 5: Forgetting (Smart Cleanup)
+When a user exceeds 300 stored memories, the **lowest importance memories are deleted first**. This runs occasionally (not every message) to avoid performance hits.
 
-Qdrant finds top-K closest vectors
+---
 
-These are treated as relevant memories
+## 🛠️ Tech Stack
 
-This is semantic recall, not keyword matching.
+| Layer | Technology |
+|-------|-----------|
+| Backend | Node.js + Express |
+| Primary LLM | Gemini 2.0 Flash |
+| Fallback LLM | Qwen 2.5 0.5b (Ollama, offline) |
+| Embeddings | Gemini Embedding API |
+| Vector DB | Qdrant (Docker) |
 
-User memory:
-- I like cybersecurity
-- I am learning backend development
+---
 
-User question:
-What should I study next?
+## 🚀 Getting Started
 
-Now the AI has context, even though it cannot remember by itself.
+### 1. Start Qdrant
+```bash
+docker run -p 6333:6333 qdrant/qdrant
+```
+
+### 2. Install dependencies
+```bash
+cd server
+npm install
+```
+
+### 3. Set up `.env`
+```env
+OPENAI_API_KEY=your_gemini_api_key_here
+```
+
+### 4. Run the server
+```bash
+npm run dev
+```
+
+Server starts on `http://localhost:5000`
+
+---
+
+## 📡 API
+
+### Chat (with auto memory)
+```
+POST /chat
+Body: { "message": "My name is Dhruv", "userId": "dhruv123" }
+Response: { "reply": "Nice to meet you, Dhruv!" }
+```
+
+Every message is automatically judged, scored, and stored if useful. No separate memory endpoint needed.
+
+---
+
+## 📁 Project Structure
+
+```
+server/
+├── index.js                        # Entry point
+├── routes/
+│   └── chat.js                     # Chat endpoint
+└── services/
+    ├── vector.service.js           # Qdrant client + search
+    ├── embedding.service.js        # Gemini embeddings
+    ├── memoryStore.service.js      # Store memory in Qdrant
+    ├── memoryjudge.service.js      # AI filter (useful or not)
+    ├── memoryscore.service.js      # Importance scoring
+    └── forget.service.js           # Delete old low-value memories
+```
