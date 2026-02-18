@@ -1,15 +1,46 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import ollama from "ollama";
+import dotenv from "dotenv"; // 👈 add this
+dotenv.config();
 const client = new GoogleGenerativeAI(process.env.OPENAI_API_KEY);
 
 export async function isUsefulMemory(text) {
   const prompt = `
-    Decide if the following message contains long-term useful personal information.
-Reply ONLY with YES or NO.
+You are a memory filter.
 
-Message "${text}"`;
+Decide if the following message contains LONG-TERM useful personal information
+(identity, goals, preferences, projects, important life events).
 
-  const model = client.getGenerativeModel(prompt);
-  const answer = result.response.text().trim().toUppercase();
+Reply ONLY with:
+YES
+or
+NO
 
-  return (answer = "YES");
+Message:
+"${text}"
+`;
+
+  // 1️⃣ PRIMARY — Gemini
+  try {
+    const model = client.getGenerativeModel({
+      model: "gemini-2.0-flash",
+    });
+
+    const result = await model.generateContent(prompt);
+    const answer = result.response.text().trim().toUpperCase();
+
+    return answer.startsWith("YES");
+  } catch (err) {
+    console.warn("Gemini memory judge failed, using Qwen fallback");
+    console.error("Gemini error details:", err.message);
+
+    // 2️⃣ FALLBACK — Qwen (offline)
+    const response = await ollama.chat({
+      model: "qwen2.5:0.5b",
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    const answer = response.message.content.trim().toUpperCase();
+    return answer.startsWith("YES");
+  }
 }

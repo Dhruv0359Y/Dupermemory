@@ -8,7 +8,7 @@ const client = new GoogleGenerativeAI(process.env.OPENAI_API_KEY);
 // ❗ function name SAME
 export async function generateEmbedding(text) {
   const model = client.getGenerativeModel({
-    model: "models/text-embedding-004", // Gemini embedding model
+    model: "models/gemini-embedding-001", // Gemini embedding model
   });
 
   const result = await model.embedContent(text);

@@ -4,7 +4,7 @@ export const qdrant = new QdrantClient({
   url: "http://localhost:6333",
 });
 
-const COLLECTION = "dupermemory_collection2";
+export const COLLECTION = "dupermemory_collection2"; // ✅ single source of truth
 
 export async function initVectorDB() {
   const collections = await qdrant.getCollections();
@@ -13,24 +13,14 @@ export async function initVectorDB() {
   if (!exists) {
     await qdrant.createCollection(COLLECTION, {
       vectors: {
-        size: 768, // Gemini embedding size
+        size: 3072,
         distance: "Cosine",
       },
     });
     console.log("✅ Vector collection created");
+  } else {
+    console.log("✅ Vector collection already exists");
   }
-}
-
-export async function addVector({ text, embedding }) {
-  await qdrant.upsert(COLLECTION, {
-    points: [
-      {
-        id: Date.now(),
-        vector: embedding,
-        payload: { text },
-      },
-    ],
-  });
 }
 
 export async function searchVector(embedding, limit = 3) {
@@ -39,9 +29,11 @@ export async function searchVector(embedding, limit = 3) {
     limit,
   });
 
-  return result.map((r) => ({
+  const memories = result.map((r) => ({
     text: r.payload.text,
     score: r.score,
   }));
+
   console.log("🧠 Retrieved memories:", memories);
+  return memories;
 }

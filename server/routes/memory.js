@@ -1,34 +1,39 @@
 import express from "express";
-import { addMemory, getMemories } from "../memoryStore.js";
-import { generateEmbedding } from "../services/embedding.service.js";
-import { cosineSimilarity } from "../similarity.js";
-import { addVector } from "../services/vector.service.js";
+import { isUsefulMemory } from "../services/memoryjudge.service.js";
+import { scoreMemory } from "../services/memoryscore.service.js";
+import { storeMemory } from "../services/memoryStore.service.js";
+import { forgetOldMemories } from "../services/forget.service.js";
 
 const router = express.Router();
 
-router.post("/add", async (req, res) => {
-  const { text } = req.body;
-  if (!text) return res.status(400).json({ error: "Text required" });
+router.post("/", async (req, res) => {
+  try {
+    const { text, userId } = req.body;
 
-  const embedding = await generateEmbedding(text);
-  await addVector({ text, embedding });
+    if (!text || !userId) {
+      return res.status(400).json({ error: "text and userId are required" });
+    }
 
-  res.json({ success: true });
-});
+    // 1️⃣ Filter — only store useful memories
+    const useful = await isUsefulMemory(text);
+    if (!useful) {
+      return res.json({ stored: false, reason: "Not useful long-term memory" });
+    }
 
-router.post("/search", async (req, res) => {
-  const { query } = req.body;
-  const queryEmbedding = await generateEmbedding(query);
+    // 2️⃣ Score it
+    const importance = scoreMemory(text);
 
-  const results = getMemories()
-    .map((mem) => ({
-      text: mem.text,
-      score: cosineSimilarity(queryEmbedding, mem.embedding),
-    }))
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 3);
+    // 3️⃣ Store with importance
+    await storeMemory(text, userId, importance);
 
-  res.json(results);
+    // 4️⃣ Clean up low-importance old memories
+    await forgetOldMemories(userId, 300);
+
+    res.json({ stored: true, importance });
+  } catch (err) {
+    console.error("MEMORY ERROR:", err);
+    res.status(500).json({ error: "Memory storage failed" });
+  }
 });
 
 export default router;

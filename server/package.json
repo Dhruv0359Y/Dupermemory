@@ -12,6 +12,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@google/genai": "^1.41.0",
     "@google/generative-ai": "^0.24.1",
     "@qdrant/js-client-rest": "^1.16.2",
     "cors": "^2.8.5",
