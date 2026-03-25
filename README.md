@@ -1,4 +1,4 @@
-# 🧠 Dupermemory — AI Assistant with Real Long-Term Memory
+# 🧠 Dupermemory — AI Assistant with Real Long-Term MemorY
 
 Dupermemory is an AI assistant that **actually remembers information across conversations**, even after server restarts.
 
