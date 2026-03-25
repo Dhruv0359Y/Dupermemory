@@ -8,6 +8,7 @@ Most chatbots *appear* to remember things, but in reality they:
 
 Dupermemory solves this by using a **Vector Database (Qdrant)** to store and retrieve memories semantically — and now with a **smart memory layer** that only remembers what actually matters.
 
+
 ---
 
 ## ❓ Why Dupermemory Exists
